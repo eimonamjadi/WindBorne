@@ -3,24 +3,12 @@ import requests
 import pandas as pd
 import datetime
 import time
-import plotly.express as px
-
-# Commented out IPython magic to ensure Python compatibility.
-# %%writefile app.py
-import streamlit as st
-# Set page config must be the first Streamlit command
-st.set_page_config(page_title="Balloon Flight & Weather Dashboard", layout="wide")
-
-import requests
-import pandas as pd
-import datetime
-import time
 import math
 import plotly.express as px
 
 st.title("Dynamic Balloon Flight & Weather Insight Dashboard")
 st.markdown("""
-This dashboard displays the live flight history of our global sounding balloons over the past 24 hours.
+This dashboard displays the live flight history of our global sounding balloons over the past 24 hours. 
 It robustly extracts flight data from our live constellation API and visualizes balloon trajectories on an interactive map.
 Weather data integration and LLM-driven Q&A feature offer additional operational insights.
 """)
@@ -29,14 +17,14 @@ Weather data integration and LLM-driven Q&A feature offer additional operational
 def fetch_json(url):
     try:
         response = requests.get(url, timeout=5)
-
+        
         # First attempt: try normal JSON parsing
         try:
             return response.json()
         except Exception as json_error:
             # The API returns corrupted JSON, so let's try to repair it
             content = response.text
-
+            
             # Case 1: Try to repair common JSON errors
             try:
                 # Replace trailing commas
@@ -45,17 +33,17 @@ def fetch_json(url):
                 return json.loads(content_fixed)
             except:
                 pass
-
+                
             # Case 2: Try to extract any valid JSON objects
             try:
                 # Look for objects enclosed in curly braces
                 import re
                 import json
-
+                
                 # Find all JSON-like objects in the string
                 pattern = r'{[^{}]*}'
                 matches = re.findall(pattern, content)
-
+                
                 valid_objects = []
                 for match in matches:
                     try:
@@ -64,11 +52,11 @@ def fetch_json(url):
                             valid_objects.append(obj)
                     except:
                         continue
-
+                
                 if valid_objects:
                     st.info(f"Partially recovered {len(valid_objects)} objects from corrupted data in {url}")
                     return valid_objects
-
+                
                 return None
             except:
                 # If all recovery attempts fail, return None
@@ -91,7 +79,7 @@ with refresh_container:
     with cols[1]:
         auto_refresh = st.checkbox("Auto-refresh (30s)", value=False)
         manual_refresh = st.button("Refresh Now")
-
+    
     if manual_refresh or (auto_refresh and (datetime.datetime.now() - st.session_state.last_refresh).seconds > 30):
         st.session_state.last_refresh = datetime.datetime.now()
         st.rerun()
@@ -116,13 +104,13 @@ with st.spinner("Fetching balloon constellation data..."):
                         # Skip entries with NaN values
                         if any(isinstance(val, float) and math.isnan(val) for val in entry):
                             continue
-
+                        
                         try:
                             lat, lon, altitude = entry
-
+                            
                             # Create timestamp from the file number (hour_ago)
                             timestamp = datetime.datetime.now() - datetime.timedelta(hours=i)
-
+                            
                             all_data.append({
                                 "lat": lat,
                                 "lon": lon,
@@ -133,13 +121,13 @@ with st.spinner("Fetching balloon constellation data..."):
                             })
                         except Exception as e:
                             st.warning(f"Error processing entry in {filename}: {e}")
-
+                    
                     # Also handle object format if present
                     elif isinstance(entry, dict) and all(k in entry for k in ("latitude", "longitude")):
                         try:
-                            timestamp = entry.get("timestamp",
+                            timestamp = entry.get("timestamp", 
                                                (datetime.datetime.now() - datetime.timedelta(hours=i)).isoformat())
-
+                            
                             entry_data = {
                                 "lat": entry["latitude"],
                                 "lon": entry["longitude"],
@@ -147,22 +135,22 @@ with st.spinner("Fetching balloon constellation data..."):
                                 "source": filename,
                                 "hour_ago": i
                             }
-
+                            
                             # Add any other fields that might be in the data
                             for key, value in entry.items():
                                 if key not in ["latitude", "longitude", "timestamp"]:
                                     entry_data[key] = value
-
+                                    
                             all_data.append(entry_data)
                         except Exception as e:
                             st.warning(f"Error processing entry in {filename}: {e}")
-
+            
             # Also handle single object format if present
             elif isinstance(data, dict) and all(k in data for k in ("latitude", "longitude")):
                 try:
-                    timestamp = data.get("timestamp",
+                    timestamp = data.get("timestamp", 
                                      (datetime.datetime.now() - datetime.timedelta(hours=i)).isoformat())
-
+                    
                     entry_data = {
                         "lat": data["latitude"],
                         "lon": data["longitude"],
@@ -170,12 +158,12 @@ with st.spinner("Fetching balloon constellation data..."):
                         "source": filename,
                         "hour_ago": i
                     }
-
+                    
                     # Add any other fields that might be in the data
                     for key, value in data.items():
                         if key not in ["latitude", "longitude", "timestamp"]:
                             entry_data[key] = value
-
+                            
                     all_data.append(entry_data)
                 except Exception as e:
                     st.warning(f"Error processing data in {filename}: {e}")
@@ -183,17 +171,19 @@ with st.spinner("Fetching balloon constellation data..."):
 # Data processing and visualization
 if all_data:
     df = pd.DataFrame(all_data)
-
+    
     # Try to convert timestamp to datetime format for better visualization
     try:
         df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df = df.sort_values('timestamp')
     except Exception as e:
         st.warning(f"Could not parse timestamp format: {e}")
-
+    
+    # Ensure altitude is numeric
+    if 'altitude' in df.columns:
+        df['altitude'] = pd.to_numeric(df['altitude'], errors='coerce')
+        
     # Extract additional metadata if available
-    balloon_ids = df['balloon_id'].unique() if 'balloon_id' in df.columns else []
-
+    
     # Display summary statistics
     st.subheader("Flight Data Summary")
     metrics_cols = st.columns(4)
@@ -211,51 +201,51 @@ if all_data:
             st.metric("Time Period", f"{df['timestamp'].min().strftime('%Y-%m-%d %H:%M')} to {df['timestamp'].max().strftime('%Y-%m-%d %H:%M')}")
         else:
             st.metric("Sources", f"{len(df['source'].unique())} files")
-
+    
     # Tab-based interface for different views
     tab1, tab2, tab3, tab4 = st.tabs(["Interactive Map", "Raw Data", "Weather Integration", "Analysis"])
-
+    
     with tab1:
         st.subheader("Balloon Flight Trajectories")
-
+        
         # Use Plotly for a more interactive map
-        fig = px.scatter_mapbox(df,
-                           lat="lat",
-                           lon="lon",
+        fig = px.scatter_mapbox(df, 
+                           lat="lat", 
+                           lon="lon", 
                            hover_name="source",
                            hover_data=["timestamp", "hour_ago", "altitude"] if "altitude" in df.columns else ["timestamp", "hour_ago"],
                            color="altitude" if "altitude" in df.columns else "hour_ago",
                            color_continuous_scale=px.colors.sequential.Viridis if "altitude" in df.columns else px.colors.cyclical.IceFire,
                            labels={"altitude": "Altitude (m)"} if "altitude" in df.columns else {},
-                           zoom=1,
+                           zoom=1, 
                            height=600)
-
+        
         fig.update_layout(mapbox_style="open-street-map")
         fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
         st.plotly_chart(fig, use_container_width=True)
-
+        
         # Add trajectory lines if timestamps are available
         if 'timestamp' in df.columns and pd.api.types.is_datetime64_any_dtype(df['timestamp']):
             st.subheader("Balloon Trajectories Over Time")
-
+            
             # Group by balloon ID if available
             if 'balloon_id' in df.columns:
-                fig = px.line_mapbox(df,
-                               lat="lat",
+                fig = px.line_mapbox(df, 
+                               lat="lat", 
                                lon="lon",
                                color="balloon_id",
                                hover_name="timestamp",
-                               zoom=1,
+                               zoom=1, 
                                height=600)
-
+                
                 fig.update_layout(mapbox_style="open-street-map")
                 fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
                 st.plotly_chart(fig, use_container_width=True)
-
+    
     with tab2:
         st.subheader("Raw Flight Data")
         st.dataframe(df)
-
+        
         # Export options
         st.download_button(
             label="Download as CSV",
@@ -263,31 +253,31 @@ if all_data:
             file_name=f'balloon_data_{datetime.datetime.now().strftime("%Y%m%d_%H%M")}.csv',
             mime='text/csv',
         )
-
+    
     with tab3:
         st.subheader("Weather Data Integration")
         st.write("Integrate weather data with balloon coordinates.")
-
+        
         weather_api_options = st.selectbox(
             "Select Weather API Provider",
             ["OpenWeatherMap", "Tomorrow.io", "Visual Crossing", "Other"]
         )
-
+        
         api_key = st.text_input("API Key", type="password", help="Enter your API key for the selected weather provider")
-
+        
         if api_key:
             # Sample a subset of points to avoid too many API calls
             sample_size = min(len(df), 5)
             sampled_points = df.sample(sample_size)
-
+            
             with st.spinner(f"Fetching weather data for {sample_size} sample points..."):
                 weather_data = []
-
+                
                 for idx, row in sampled_points.iterrows():
                     if weather_api_options == "OpenWeatherMap":
                         weather_url = f"https://api.openweathermap.org/data/2.5/weather?lat={row['lat']}&lon={row['lon']}&appid={api_key}&units=metric"
                         weather_response = fetch_json(weather_url)
-
+                        
                         if weather_response:
                             weather_data.append({
                                 "lat": row['lat'],
@@ -298,17 +288,17 @@ if all_data:
                                 "wind_speed": weather_response.get('wind', {}).get('speed', "N/A"),
                                 "weather": weather_response.get('weather', [{}])[0].get('description', "N/A"),
                             })
-
+                            
                 # Display the integrated data
                 if weather_data:
                     st.subheader("Balloon Position + Weather Data")
                     weather_df = pd.DataFrame(weather_data)
                     st.dataframe(weather_df)
-
+                    
                     # Weather Map visualization
                     fig = px.scatter_mapbox(
-                        weather_df,
-                        lat="lat",
+                        weather_df, 
+                        lat="lat", 
                         lon="lon",
                         color="temperature",
                         size=[10] * len(weather_df),
@@ -317,18 +307,18 @@ if all_data:
                         zoom=1,
                         height=500
                     )
-
+                    
                     fig.update_layout(mapbox_style="open-street-map")
                     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
                     st.plotly_chart(fig, use_container_width=True)
-
+                    
                     # Insights
                     st.subheader("Weather-Balloon Insights")
                     st.write("""
                     This integration allows you to understand the relationship between balloon behavior and weather conditions.
                     You can analyze how temperature, wind speed, and other factors affect balloon trajectory and altitude.
                     """)
-
+                    
                     # Add a correlation chart if altitude data is available
                     if 'altitude' in df.columns and len(weather_data) > 2:
                         merged_data = pd.merge(
@@ -337,12 +327,12 @@ if all_data:
                             on=['lat', 'lon'],
                             how='inner'
                         )
-
+                        
                         if len(merged_data) > 0:
                             st.subheader("Altitude vs Weather Parameters")
                             alt_temp_fig = px.scatter(
-                                merged_data,
-                                x="temperature",
+                                merged_data, 
+                                x="temperature", 
                                 y="altitude",
                                 trendline="ols",
                                 title="Altitude vs Temperature"
@@ -352,120 +342,134 @@ if all_data:
                     st.error("Failed to fetch weather data. Please check your API key and try again.")
         else:
             st.info("Enter a valid API key to fetch and integrate weather data with balloon coordinates.")
-
+            
             # Show example of what will be displayed
             st.subheader("Example Weather Integration (Sample Data)")
             st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Weather_map.png/800px-Weather_map.png", caption="Example Weather Overlay", use_column_width=True)
-
+    
     with tab4:
         st.subheader("Flight Data Analysis")
-
+        
         # Altitude distribution if available
         if 'altitude' in df.columns:
             st.subheader("Altitude Distribution")
-
+            
             # Create altitude histogram
             altitude_fig = px.histogram(
-                df,
+                df, 
                 x='altitude',
                 nbins=30,
                 title="Distribution of Balloon Altitudes",
                 labels={"altitude": "Altitude (m)"}
             )
             st.plotly_chart(altitude_fig, use_container_width=True)
-
+            
             # Create altitude vs latitude visualization
             altitude_lat_fig = px.scatter(
-                df,
-                x='lat',
+                df, 
+                x='lat', 
                 y='altitude',
                 color='hour_ago',
                 title="Altitude vs Latitude",
                 labels={"altitude": "Altitude (m)", "lat": "Latitude"}
             )
             st.plotly_chart(altitude_lat_fig, use_container_width=True)
-
+            
             # Create 3D visualization
             st.subheader("3D Balloon Positions")
             fig_3d = px.scatter_3d(
-                df,
-                x='lat',
-                y='lon',
+                df, 
+                x='lat', 
+                y='lon', 
                 z='altitude',
                 color='hour_ago',
                 title="3D Visualization of Balloon Positions",
                 labels={"altitude": "Altitude (m)"}
             )
             st.plotly_chart(fig_3d, use_container_width=True)
-
+        
         # Time series analysis if timestamp is available
         if 'timestamp' in df.columns and pd.api.types.is_datetime64_any_dtype(df['timestamp']):
             st.subheader("Temporal Analysis")
-
+            
             # Resample data by hour
             try:
                 df_resampled = df.set_index('timestamp').resample('1H').count()['lat'].reset_index()
                 df_resampled.columns = ['timestamp', 'count']
-
+                
                 # Plot time series
                 fig = px.line(
-                    df_resampled,
-                    x='timestamp',
+                    df_resampled, 
+                    x='timestamp', 
                     y='count',
                     title="Balloon Data Points by Hour"
                 )
                 st.plotly_chart(fig, use_container_width=True)
-
+                
                 # If altitude is available, plot average altitude over time
                 if 'altitude' in df.columns:
-                    alt_by_time = df.set_index('timestamp').resample('1H').mean()['altitude'].reset_index()
-                    alt_by_time.columns = ['timestamp', 'avg_altitude']
-
-                    alt_time_fig = px.line(
-                        alt_by_time,
-                        x='timestamp',
-                        y='avg_altitude',
-                        title="Average Balloon Altitude Over Time",
-                        labels={"avg_altitude": "Average Altitude (m)"}
-                    )
-                    st.plotly_chart(alt_time_fig, use_container_width=True)
-
+                    try:
+                        # Ensure altitude is numeric
+                        altitude_data = df.copy()
+                        altitude_data['altitude'] = pd.to_numeric(altitude_data['altitude'], errors='coerce')
+                        
+                        # Drop NaN values
+                        altitude_data = altitude_data.dropna(subset=['altitude'])
+                        
+                        # Compute mean by hour
+                        alt_by_time = altitude_data.set_index('timestamp').resample('1H').mean(numeric_only=True).reset_index()
+                        
+                        # Check if we got valid data
+                        if 'altitude' in alt_by_time.columns and not alt_by_time['altitude'].empty:
+                            alt_time_fig = px.line(
+                                alt_by_time,
+                                x='timestamp',
+                                y='altitude',
+                                title="Average Balloon Altitude Over Time",
+                                labels={"altitude": "Average Altitude (m)"}
+                            )
+                            st.plotly_chart(alt_time_fig, use_container_width=True)
+                        else:
+                            st.info("Could not generate altitude time series due to insufficient data.")
+                    except Exception as e:
+                        st.warning(f"Could not analyze altitude time series: {e}")
+                
             except Exception as e:
                 st.warning(f"Could not perform time series analysis: {e}")
-
+        
         # LLM-driven insights
         st.subheader("LLM-Driven Insights")
         st.markdown("If you'd like to use our LLM features (for analyzing flight patterns, optimizing operations, etc.), please enter your OpenAI or Anthropic API key below.")
-
+        
         llm_provider = st.radio("Select LLM Provider", ["OpenAI", "Anthropic"])
         llm_api_key = st.text_input(f"{llm_provider} API Key", type="password")
-
+        
         if llm_api_key:
             st.info("LLM feature enabled. Ask a question about the flight data:")
             query = st.text_area("Your question:", placeholder="E.g., What are the patterns in balloon altitude over time? or What operational insights can you derive from this data?")
-
+            
             if st.button("Submit Query"):
                 with st.spinner("Analyzing data and generating insights..."):
                     # Here you would send the flight data summary and the query to your LLM backend.
                     # For now, we'll simulate a response
                     time.sleep(2)  # Simulate processing time
-
+                    
                     st.subheader("LLM Analysis")
                     st.markdown("""
                     **Analysis of Flight Patterns:**
-
+                    
                     Based on the balloon trajectory data, I can identify several noteworthy patterns:
-
+                    
                     1. The balloons appear to generally travel eastward, consistent with prevailing upper-atmosphere winds.
                     2. There's significant variance in altitude over the 24-hour period, which correlates with diurnal temperature changes.
                     3. The data shows clustering at certain coordinates, which may indicate preferred launch sites or weather patterns affecting balloon movement.
-
+                    
                     **Operational Recommendations:**
-
+                    
                     - Consider adjusting launch times to optimize for favorable wind conditions based on the observed trajectory patterns.
                     - Monitor the correlation between weather data and balloon performance to improve prediction models.
                     - The areas with highest data density would be good candidates for improved ground station coverage.
-
+                    
                     Would you like me to analyze any specific aspect of the data in more detail?
                     """)
         else:
