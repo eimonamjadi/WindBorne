@@ -203,7 +203,7 @@ if all_data:
             st.metric("Sources", f"{len(df['source'].unique())} files")
     
     # Tab-based interface for different views
-    tab1, tab2, tab3, tab4 = st.tabs(["Interactive Map", "Raw Data", "Weather Integration", "Analysis"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Interactive Map", "Raw Data", "Weather Integration", "Analysis (LLM Chat)"])
     
     with tab1:
         st.subheader("Balloon Flight Trajectories")
