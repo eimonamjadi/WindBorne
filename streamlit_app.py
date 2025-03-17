@@ -16,7 +16,7 @@ Weather data integration and LLM-driven Q&A feature offer additional operational
 # Function to robustly fetch JSON data from a URL, handling corrupted data
 def fetch_json(url):
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=15)
         
         # First attempt: try normal JSON parsing
         try:
