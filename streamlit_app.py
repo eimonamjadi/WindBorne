@@ -1,10 +1,15 @@
 import streamlit as st
+# Set page config must be the first Streamlit command
+st.set_page_config(page_title="Balloon Flight & Weather Dashboard", layout="wide")
+
 import requests
 import pandas as pd
 import datetime
 import time
 import math
 import plotly.express as px
+from openai import OpenAI
+from io import StringIO
 
 st.title("Dynamic Balloon Flight & Weather Insight Dashboard")
 st.markdown("""
@@ -182,8 +187,6 @@ if all_data:
     if 'altitude' in df.columns:
         df['altitude'] = pd.to_numeric(df['altitude'], errors='coerce')
         
-    # Extract additional metadata if available
-    
     # Display summary statistics
     st.subheader("Flight Data Summary")
     metrics_cols = st.columns(4)
@@ -439,43 +442,96 @@ if all_data:
         
         # LLM-driven insights
         st.subheader("LLM-Driven Insights")
-        st.markdown("If you'd like to use our LLM features (for analyzing flight patterns, optimizing operations, etc.), please enter your OpenAI or Anthropic API key below.")
-        
-        llm_provider = st.radio("Select LLM Provider", ["OpenAI", "Anthropic"])
-        llm_api_key = st.text_input(f"{llm_provider} API Key", type="password")
-        
-        if llm_api_key:
-            st.info("LLM feature enabled. Ask a question about the flight data:")
+        st.markdown("If you'd like to use OpenAI to analyze flight patterns and get operational insights, please enter your API key below.")
+
+        openai_api_key = st.text_input("OpenAI API Key", type="password")
+
+        if openai_api_key:
+            st.info("OpenAI integration enabled. Ask a question about the flight data:")
             query = st.text_area("Your question:", placeholder="E.g., What are the patterns in balloon altitude over time? or What operational insights can you derive from this data?")
+            
+            model_option = st.selectbox(
+                "Select OpenAI Model",
+                ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
+                index=1
+            )
             
             if st.button("Submit Query"):
                 with st.spinner("Analyzing data and generating insights..."):
-                    # Here you would send the flight data summary and the query to your LLM backend.
-                    # For now, we'll simulate a response
-                    time.sleep(2)  # Simulate processing time
-                    
-                    st.subheader("LLM Analysis")
-                    st.markdown("""
-                    **Analysis of Flight Patterns:**
-                    
-                    Based on the balloon trajectory data, I can identify several noteworthy patterns:
-                    
-                    1. The balloons appear to generally travel eastward, consistent with prevailing upper-atmosphere winds.
-                    2. There's significant variance in altitude over the 24-hour period, which correlates with diurnal temperature changes.
-                    3. The data shows clustering at certain coordinates, which may indicate preferred launch sites or weather patterns affecting balloon movement.
-                    
-                    **Operational Recommendations:**
-                    
-                    - Consider adjusting launch times to optimize for favorable wind conditions based on the observed trajectory patterns.
-                    - Monitor the correlation between weather data and balloon performance to improve prediction models.
-                    - The areas with highest data density would be good candidates for improved ground station coverage.
-                    
-                    Would you like me to analyze any specific aspect of the data in more detail?
-                    """)
+                    try:
+                        # Initialize OpenAI client with the provided API key
+                        client = OpenAI(api_key=openai_api_key)
+                        
+                        # Prepare a summary of the data for the LLM
+                        buffer = StringIO()
+                        
+                        # Basic dataset summary
+                        buffer.write(f"Dataset Summary:\n")
+                        buffer.write(f"- Total data points: {len(df)}\n")
+                        buffer.write(f"- Time period: {df['timestamp'].min().strftime('%Y-%m-%d %H:%M')} to {df['timestamp'].max().strftime('%Y-%m-%d %H:%M')}\n")
+                        
+                        if 'altitude' in df.columns:
+                            buffer.write(f"- Altitude range: {df['altitude'].min():.2f}m to {df['altitude'].max():.2f}m\n")
+                            buffer.write(f"- Average altitude: {df['altitude'].mean():.2f}m\n")
+                        
+                        # Geographic distribution
+                        buffer.write(f"- Latitude range: {df['lat'].min():.4f} to {df['lat'].max():.4f}\n")
+                        buffer.write(f"- Longitude range: {df['lon'].min():.4f} to {df['lon'].max():.4f}\n")
+                        
+                        # Sample of the data (10 random points)
+                        buffer.write("\nSample Data Points (10 random selections):\n")
+                        sample_df = df.sample(min(10, len(df)))
+                        for idx, row in sample_df.iterrows():
+                            buffer.write(f"- Location: ({row['lat']:.4f}, {row['lon']:.4f})")
+                            if 'altitude' in row:
+                                buffer.write(f", Altitude: {row['altitude']:.2f}m")
+                            buffer.write(f", Time: {row['hour_ago']} hours ago\n")
+                        
+                        # Statistical summary
+                        buffer.write("\nStatistical Summary:\n")
+                        stat_summary = df.describe().to_string()
+                        buffer.write(stat_summary)
+                        
+                        # Add altitude distribution information if available
+                        if 'altitude' in df.columns:
+                            buffer.write("\nAltitude Distribution (counts by range):\n")
+                            altitude_bins = pd.cut(df['altitude'], bins=5)
+                            altitude_counts = df.groupby(altitude_bins).size()
+                            buffer.write(altitude_counts.to_string())
+                        
+                        data_summary = buffer.getvalue()
+                        
+                        # Make the OpenAI API call
+                        response = client.chat.completions.create(
+                            model=model_option,
+                            messages=[
+                                {"role": "system", "content": "You are an expert in analyzing balloon flight data and providing operational insights. The user will provide you with data about atmospheric balloon trajectories and ask questions about it."},
+                                {"role": "user", "content": f"Here is the summary of balloon flight data:\n\n{data_summary}\n\nBased on this data, please answer the following question: {query}"}
+                            ],
+                            max_tokens=1500,
+                            temperature=0.2,
+                        )
+                        
+                        # Extract and display the response
+                        llm_response = response.choices[0].message.content
+                        
+                        st.subheader("OpenAI Analysis")
+                        st.markdown(llm_response)
+                        
+                    except Exception as e:
+                        st.error(f"Error calling OpenAI API: {str(e)}")
+                        st.info("Please check your API key and try again. Make sure you have access to the specified model.")
         else:
-            st.info("Enter your API key to enable LLM-powered analysis of balloon flight patterns and operational insights.")
+            st.info("Enter your OpenAI API key to enable AI-powered analysis of balloon flight patterns and operational insights.")
 
 else:
     st.error("No valid flight data could be extracted from the API.")
 
 st.markdown("---")
+st.markdown("""
+**Notes:** I chose this project because it offers an exciting opportunity to merge real-time flight data with environmental insights, 
+empowering operational decisions through a richer understanding of balloon dynamics. The integration of weather data provides crucial 
+context for understanding balloon behavior at different altitudes and geographical locations, while the 3D visualization capabilities
+allow for better spatial understanding of the balloon constellation. The LLM-powered analysis offers deeper insights into operational
+optimization and pattern recognition across the fleet.
+""")
