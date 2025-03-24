@@ -301,6 +301,11 @@ if all_data:
                 if weather_data:
                     st.subheader("Balloon Position + Weather Data")
                     weather_df = pd.DataFrame(weather_data)
+                    
+                    # Convert temperature and wind_speed to numeric values
+                    weather_df['temperature'] = pd.to_numeric(weather_df['temperature'], errors='coerce')
+                    weather_df['wind_speed'] = pd.to_numeric(weather_df['wind_speed'], errors='coerce')
+                    
                     st.dataframe(weather_df)
                     
                     # Weather Map visualization
@@ -329,61 +334,73 @@ if all_data:
                     
                     # Add a correlation chart if altitude data is available
                     if 'altitude' in df.columns and len(weather_data) > 2:
-                        merged_data = pd.merge(
-                            df[['lat', 'lon', 'altitude']],
-                            weather_df[['lat', 'lon', 'temperature', 'wind_speed']],
-                            on=['lat', 'lon'],
-                            how='inner'
-                        )
+                        # Make sure we're only using rows where both temperature and altitude have valid numeric values
+                        weather_df_clean = weather_df.dropna(subset=['temperature', 'wind_speed'])
                         
-                        if len(merged_data) > 0:
-                            st.subheader("Altitude vs Weather Parameters")
+                        if not weather_df_clean.empty:
+                            merged_data = pd.merge(
+                                df[['lat', 'lon', 'altitude']],
+                                weather_df_clean[['lat', 'lon', 'temperature', 'wind_speed']],
+                                on=['lat', 'lon'],
+                                how='inner'
+                            )
                             
-                            # Ensure numeric data and remove any NaN values
-                            merged_data = merged_data.dropna(subset=['temperature', 'altitude'])
-                            
-                            try:
-                                # Only use trendline if we have enough data points
-                                use_trendline = len(merged_data) >= 3
+                            if len(merged_data) > 0:
+                                st.subheader("Altitude vs Weather Parameters")
                                 
-                                alt_temp_fig = px.scatter(
-                                    merged_data, 
-                                    x="temperature", 
-                                    y="altitude",
-                                    trendline="ols" if use_trendline else None,
-                                    title="Altitude vs Temperature"
-                                )
-                                st.plotly_chart(alt_temp_fig, use_container_width=True)
+                                # Final check to ensure we have numeric data
+                                merged_data = merged_data.dropna(subset=['temperature', 'altitude'])
                                 
-                                # Add a separate wind speed plot
-                                if 'wind_speed' in merged_data.columns:
-                                    merged_data['wind_speed'] = pd.to_numeric(merged_data['wind_speed'], errors='coerce')
-                                    merged_data = merged_data.dropna(subset=['wind_speed'])
-                                    
-                                    if len(merged_data) > 0:
-                                        wind_alt_fig = px.scatter(
-                                            merged_data,
-                                            x="wind_speed",
-                                            y="altitude",
-                                            trendline="ols" if len(merged_data) >= 3 else None,
-                                            title="Altitude vs Wind Speed"
-                                        )
-                                        st.plotly_chart(wind_alt_fig, use_container_width=True)
-                                        
-                            except Exception as e:
-                                st.warning(f"Could not generate correlation plot: {e}")
-                                
-                                # Fallback to a simple scatter plot without trendline
                                 try:
-                                    basic_fig = px.scatter(
-                                        merged_data, 
-                                        x="temperature", 
-                                        y="altitude",
-                                        title="Altitude vs Temperature (Basic Plot)"
-                                    )
-                                    st.plotly_chart(basic_fig, use_container_width=True)
-                                except:
-                                    st.error("Unable to create visualization with the current weather data.")
+                                    # Only attempt visualization if we have enough data points
+                                    if len(merged_data) >= 2:
+                                        # Use trendline only if we have 3+ points
+                                        use_trendline = len(merged_data) >= 3
+                                        
+                                        # Simple scatter plot without trendline
+                                        alt_temp_fig = px.scatter(
+                                            merged_data, 
+                                            x="temperature", 
+                                            y="altitude",
+                                            trendline="ols" if use_trendline else None,
+                                            title="Altitude vs Temperature",
+                                            labels={"temperature": "Temperature (°C)", "altitude": "Altitude (m)"}
+                                        )
+                                        st.plotly_chart(alt_temp_fig, use_container_width=True)
+                                        
+                                        # Add wind speed plot if data is available
+                                        merged_data_wind = merged_data.dropna(subset=['wind_speed'])
+                                        if len(merged_data_wind) >= 2:
+                                            wind_alt_fig = px.scatter(
+                                                merged_data_wind,
+                                                x="wind_speed",
+                                                y="altitude",
+                                                trendline="ols" if len(merged_data_wind) >= 3 else None,
+                                                title="Altitude vs Wind Speed",
+                                                labels={"wind_speed": "Wind Speed (m/s)", "altitude": "Altitude (m)"}
+                                            )
+                                            st.plotly_chart(wind_alt_fig, use_container_width=True)
+                                    else:
+                                        st.info("Not enough matching points to generate correlation plots. Try sampling more balloon positions.")
+                                except Exception as e:
+                                    st.warning(f"Could not generate correlation plot: {e}")
+                                    
+                                    # Fallback to a very simple plot
+                                    try:
+                                        st.info("Falling back to a simplified plot...")
+                                        basic_fig = px.scatter(
+                                            merged_data, 
+                                            x="temperature", 
+                                            y="altitude",
+                                            title="Altitude vs Temperature (Basic Plot)"
+                                        )
+                                        st.plotly_chart(basic_fig, use_container_width=True)
+                                    except:
+                                        st.error("Unable to create any visualization with the current weather data.")
+                            else:
+                                st.info("No matching coordinates found between balloon and weather data for correlation analysis.")
+                        else:
+                            st.info("Weather data contains non-numeric values. Cannot generate correlation plots.")
                 else:
                     st.error("Failed to fetch weather data. Please check your API key and try again.")
         else:
