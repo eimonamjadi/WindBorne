@@ -8,8 +8,13 @@ import datetime
 import time
 import math
 import plotly.express as px
-from openai import OpenAI
 from io import StringIO
+try:
+    from openai import OpenAI
+    USE_LEGACY_OPENAI = False
+except ImportError:
+    import openai
+    USE_LEGACY_OPENAI = True
 
 st.title("Dynamic Balloon Flight & Weather Insight Dashboard")
 st.markdown("""
