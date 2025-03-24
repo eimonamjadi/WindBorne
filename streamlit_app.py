@@ -338,14 +338,52 @@ if all_data:
                         
                         if len(merged_data) > 0:
                             st.subheader("Altitude vs Weather Parameters")
-                            alt_temp_fig = px.scatter(
-                                merged_data, 
-                                x="temperature", 
-                                y="altitude",
-                                trendline="ols",
-                                title="Altitude vs Temperature"
-                            )
-                            st.plotly_chart(alt_temp_fig, use_container_width=True)
+                            
+                            # Ensure numeric data and remove any NaN values
+                            merged_data = merged_data.dropna(subset=['temperature', 'altitude'])
+                            
+                            try:
+                                # Only use trendline if we have enough data points
+                                use_trendline = len(merged_data) >= 3
+                                
+                                alt_temp_fig = px.scatter(
+                                    merged_data, 
+                                    x="temperature", 
+                                    y="altitude",
+                                    trendline="ols" if use_trendline else None,
+                                    title="Altitude vs Temperature"
+                                )
+                                st.plotly_chart(alt_temp_fig, use_container_width=True)
+                                
+                                # Add a separate wind speed plot
+                                if 'wind_speed' in merged_data.columns:
+                                    merged_data['wind_speed'] = pd.to_numeric(merged_data['wind_speed'], errors='coerce')
+                                    merged_data = merged_data.dropna(subset=['wind_speed'])
+                                    
+                                    if len(merged_data) > 0:
+                                        wind_alt_fig = px.scatter(
+                                            merged_data,
+                                            x="wind_speed",
+                                            y="altitude",
+                                            trendline="ols" if len(merged_data) >= 3 else None,
+                                            title="Altitude vs Wind Speed"
+                                        )
+                                        st.plotly_chart(wind_alt_fig, use_container_width=True)
+                                        
+                            except Exception as e:
+                                st.warning(f"Could not generate correlation plot: {e}")
+                                
+                                # Fallback to a simple scatter plot without trendline
+                                try:
+                                    basic_fig = px.scatter(
+                                        merged_data, 
+                                        x="temperature", 
+                                        y="altitude",
+                                        title="Altitude vs Temperature (Basic Plot)"
+                                    )
+                                    st.plotly_chart(basic_fig, use_container_width=True)
+                                except:
+                                    st.error("Unable to create visualization with the current weather data.")
                 else:
                     st.error("Failed to fetch weather data. Please check your API key and try again.")
         else:
